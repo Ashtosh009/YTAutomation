@@ -8,6 +8,8 @@ load_dotenv(BASE_DIR / ".env")
 
 # LLM
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+# gemini-flash-latest stopped responding (>120s timeouts, 2026-11-15); gemini-3.5-flash answers in ~13s.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 # Database / Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
@@ -27,6 +29,8 @@ DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "en-US-ChristopherNeural")
 YOUTUBE_CLIENT_SECRETS_FILE = os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", str(BASE_DIR / "client_secret.json"))
 YOUTUBE_TOKEN_FILE = os.getenv("YOUTUBE_TOKEN_FILE", str(BASE_DIR / "token.json"))
 YOUTUBE_TOKEN_BASE64 = os.getenv("YOUTUBE_TOKEN_BASE64", "")
+# Privacy for uploads with no scheduled publish time: public | unlisted | private.
+YOUTUBE_DEFAULT_PRIVACY = os.getenv("YOUTUBE_DEFAULT_PRIVACY", "public")
 
 # Output & Assets directory
 OUTPUT_DIR = BASE_DIR / "output"

@@ -84,10 +84,12 @@ class VideoRenderer:
             for item in scene_media:
                 f.write(f"file '{os.path.abspath(item['audio_path'])}'\n")
 
-        subprocess.run([
+        concat = subprocess.run([
             self.ffmpeg_bin, "-y", "-f", "concat", "-safe", "0",
             "-i", concat_list_file, "-c", "copy", combined_audio_path
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if concat.returncode != 0:
+            raise RuntimeError(f"[Renderer] FFmpeg audio concat failed: {concat.stderr[-800:]}")
 
         # Step 3: Stream rendered frames directly to FFmpeg via STDIN pipe
         print(f"[Renderer] Rendering {total_duration:.1f}s animation ({int(total_duration * self.fps)} frames) at {self.fps} FPS...")
@@ -107,10 +109,12 @@ class VideoRenderer:
             "-c:a", "aac",
             "-b:a", "192k",
             "-shortest",
+            "-movflags", "+faststart",  # moov atom first so the panel can stream before full download
             output_path
         ]
 
-        pipe = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ffmpeg_log = open(temp_dir / "ffmpeg_render.log", "w")
+        pipe = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=ffmpeg_log)
 
         total_frames = int(total_duration * self.fps)
         cur_scene_idx = 0
@@ -134,9 +138,12 @@ class VideoRenderer:
             words = [t["word"] for t in timings]
             active_word_idx = -1
 
+            # Hold the most recently started word through inter-word gaps so the
+            # caption chunk does not flash back to the first words of the scene.
             for w_idx, t in enumerate(timings):
-                if t["start"] <= scene_local_time <= t["end"]:
+                if t["start"] <= scene_local_time:
                     active_word_idx = w_idx
+                else:
                     break
 
             if words:
@@ -158,7 +165,11 @@ class VideoRenderer:
                 break
 
         pipe.stdin.close()
-        pipe.wait()
+        rc = pipe.wait()
+        ffmpeg_log.close()
+        if rc != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            tail = (temp_dir / "ffmpeg_render.log").read_text()[-800:]
+            raise RuntimeError(f"[Renderer] FFmpeg encode failed (exit {rc}): {tail}")
         print(f"[Renderer] Render complete: {output_path}")
         return output_path
 

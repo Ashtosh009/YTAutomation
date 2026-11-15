@@ -11,7 +11,8 @@ class TextToSpeech:
     async def _synthesize_edge_tts(self, text: str, output_audio_path: str) -> List[Dict[str, Any]]:
         """Synthesize audio with word-level boundary timestamps using edge-tts."""
         import edge_tts
-        communicate = edge_tts.Communicate(text, self.voice)
+        # edge-tts >= 7 defaults to SentenceBoundary; karaoke captions need per-word timings.
+        communicate = edge_tts.Communicate(text, self.voice, boundary="WordBoundary")
         submaker = edge_tts.SubMaker()
         
         with open(output_audio_path, "wb") as f:

@@ -110,7 +110,8 @@ class Database:
         storage_path: Optional[str] = None,
         thumbnail_path: Optional[str] = None,
         youtube_id: Optional[str] = None,
-        error_log: Optional[str] = None
+        error_log: Optional[str] = None,
+        scheduled_publish_at: Optional[str] = None
     ):
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         if self.use_supabase:
@@ -125,6 +126,8 @@ class Database:
                 data["youtube_video_id"] = youtube_id
             if error_log is not None:
                 data["error_log"] = error_log
+            if scheduled_publish_at is not None:
+                data["scheduled_publish_at"] = scheduled_publish_at
 
             try:
                 res = self.supabase.table("videos").update(data).eq("id", video_id).execute()
@@ -148,7 +151,9 @@ class Database:
                     f"[DB] Update of videos row #{video_id} affected {len(rows)} rows (expected 1). "
                     "Check that the row exists and that SUPABASE_KEY is the service-role key."
                 )
-            mismatched = [k for k in data if k != "updated_at" and rows[0].get(k) != data[k]]
+            # Timestamps come back normalised by Postgres, so compare text fields only.
+            skip = {"updated_at", "scheduled_publish_at"}
+            mismatched = [k for k in data if k not in skip and rows[0].get(k) != data[k]]
             if mismatched:
                 raise DatabaseUpdateError(
                     f"[DB] videos row #{video_id} did not persist fields {mismatched} after update."
@@ -173,6 +178,9 @@ class Database:
                 if error_log is not None:
                     updates.append("error_log = ?")
                     params.append(error_log)
+                if scheduled_publish_at is not None:
+                    updates.append("scheduled_publish_at = ?")
+                    params.append(scheduled_publish_at)
                 params.append(video_id)
                 try:
                     cursor.execute(f"UPDATE videos SET {', '.join(updates)} WHERE id = ?", params)

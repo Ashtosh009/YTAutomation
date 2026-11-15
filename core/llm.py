@@ -4,7 +4,10 @@ import re
 from typing import Dict, Any, List
 import urllib.request
 import urllib.error
-from core.config import GEMINI_API_KEY
+from core.config import GEMINI_API_KEY, GEMINI_MODEL
+
+GEMINI_TIMEOUT = 90  # seconds per attempt
+GEMINI_ATTEMPTS = 2
 
 SYSTEM_PROMPT = """
 You are a viral YouTube Shorts writer and animator director specializing in comedic stick figure storytime animations.
@@ -56,8 +59,8 @@ def generate_script_with_gemini(topic: str) -> Dict[str, Any]:
         return get_fallback_script(topic)
 
     prompt = SCRIPT_SCHEMA_PROMPT.replace("{topic}", topic)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_API_KEY}"
-    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+
     payload = {
         "contents": [
             {
@@ -72,22 +75,33 @@ def generate_script_with_gemini(topic: str) -> Dict[str, Any]:
         }
     }
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+    # With an API key configured, a Gemini failure must fail the run rather than
+    # silently publishing the generic fallback template.
+    last_err: Exception = RuntimeError("no attempts made")
+    for attempt in range(1, GEMINI_ATTEMPTS + 1):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY}
+            )
+            with urllib.request.urlopen(req, timeout=GEMINI_TIMEOUT) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
             raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
             # Clean markdown JSON wraps if present
             cleaned_json = re.sub(r"^```json\s*", "", raw_text.strip())
             cleaned_json = re.sub(r"```$", "", cleaned_json.strip())
-            return json.loads(cleaned_json)
-    except Exception as e:
-        print(f"[LLM] Error calling Gemini API: {e}. Falling back to template.")
-        return get_fallback_script(topic)
+            script = json.loads(cleaned_json)
+            if not script.get("title") or not script.get("scenes"):
+                raise ValueError(f"Gemini JSON missing title/scenes (keys: {sorted(script)})")
+            return script
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")[:300]
+            last_err = RuntimeError(f"HTTP {e.code} from {GEMINI_MODEL}: {body}")
+        except Exception as e:
+            last_err = e
+        print(f"[LLM] Gemini attempt {attempt}/{GEMINI_ATTEMPTS} failed ({GEMINI_MODEL}): {last_err}")
+    raise RuntimeError(f"[LLM] Gemini script generation failed after {GEMINI_ATTEMPTS} attempts: {last_err}") from last_err
 
 def get_fallback_script(topic: str) -> Dict[str, Any]:
     """Provides an instant high-retention fallback script for testing without API keys."""
