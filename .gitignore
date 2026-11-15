@@ -17,8 +17,8 @@ token*.json
 
 # Data & Outputs
 data/*.db
-output/*.mp4
-output/temp/
+output/*
+!output/.gitkeep
 
 # OS
 .DS_Store

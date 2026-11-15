@@ -41,6 +41,8 @@ class Database:
                 tags TEXT,
                 script_json TEXT,
                 video_path TEXT,
+                storage_path TEXT,
+                thumbnail_path TEXT,
                 status TEXT DEFAULT 'queued',
                 scheduled_publish_at TIMESTAMP,
                 youtube_video_id TEXT,
@@ -96,29 +98,65 @@ class Database:
                 conn.commit()
                 return cursor.lastrowid
 
-    def update_video_status(self, video_id: int, status: str, video_path: Optional[str] = None, youtube_id: Optional[str] = None, error_log: Optional[str] = None):
+    def update_video_status(
+        self,
+        video_id: int,
+        status: str,
+        video_path: Optional[str] = None,
+        storage_path: Optional[str] = None,
+        thumbnail_path: Optional[str] = None,
+        youtube_id: Optional[str] = None,
+        error_log: Optional[str] = None
+    ):
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         if self.use_supabase:
             data = {"status": status, "updated_at": now}
-            if video_path:
+            if video_path is not None:
                 data["video_path"] = video_path
-            if youtube_id:
+            if storage_path is not None:
+                data["storage_path"] = storage_path
+            if thumbnail_path is not None:
+                data["thumbnail_path"] = thumbnail_path
+            if youtube_id is not None:
                 data["youtube_video_id"] = youtube_id
-            if error_log:
+            if error_log is not None:
                 data["error_log"] = error_log
-            self.supabase.table("videos").update(data).eq("id", video_id).execute()
+
+            try:
+                self.supabase.table("videos").update(data).eq("id", video_id).execute()
+            except Exception as e:
+                err_str = str(e)
+                if "PGRST204" in err_str and ("storage_path" in err_str or "thumbnail_path" in err_str):
+                    print(
+                        "\n⚠️ [DB] Supabase schema warning: 'storage_path' or 'thumbnail_path' column is missing from 'videos' table.\n"
+                        "Please run this in your Supabase SQL Editor:\n"
+                        "  ALTER TABLE videos ADD COLUMN IF NOT EXISTS storage_path TEXT;\n"
+                        "  ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_path TEXT;\n"
+                    )
+                    # Retry without the missing storage columns so status is still saved
+                    data.pop("storage_path", None)
+                    data.pop("thumbnail_path", None)
+                    self.supabase.table("videos").update(data).eq("id", video_id).execute()
+                else:
+                    raise e
         else:
             with sqlite3.connect(SQLITE_DB_PATH) as conn:
                 cursor = conn.cursor()
                 updates = ["status = ?", "updated_at = CURRENT_TIMESTAMP"]
                 params = [status]
-                if video_path:
+                if video_path is not None:
                     updates.append("video_path = ?")
                     params.append(video_path)
-                if youtube_id:
+                if storage_path is not None:
+                    updates.append("storage_path = ?")
+                    params.append(storage_path)
+                if thumbnail_path is not None:
+                    updates.append("thumbnail_path = ?")
+                    params.append(thumbnail_path)
+                if youtube_id is not None:
                     updates.append("youtube_video_id = ?")
                     params.append(youtube_id)
-                if error_log:
+                if error_log is not None:
                     updates.append("error_log = ?")
                     params.append(error_log)
                 params.append(video_id)
@@ -127,8 +165,23 @@ class Database:
 
     def get_next_job(self, status: str = "queued") -> Optional[Dict[str, Any]]:
         """Fetch next item needing processing (or approval)"""
+        # Status normalization to handle both panel and pipeline terminology
+        if status in ("approved", "approved_for_upload"):
+            target_statuses = ["approved", "approved_for_upload"]
+        elif status in ("ready_for_review", "pending_review"):
+            target_statuses = ["ready_for_review", "pending_review"]
+        else:
+            target_statuses = [status]
+
         if self.use_supabase:
-            res = self.supabase.table("videos").select("*").eq("status", status).order("created_at").limit(1).execute()
+            res = (
+                self.supabase.table("videos")
+                .select("*")
+                .in_("status", target_statuses)
+                .order("created_at")
+                .limit(1)
+                .execute()
+            )
             if res.data:
                 return res.data[0]
             return None
@@ -136,7 +189,11 @@ class Database:
             with sqlite3.connect(SQLITE_DB_PATH) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM videos WHERE status = ? ORDER BY created_at ASC LIMIT 1", (status,))
+                placeholders = ",".join("?" for _ in target_statuses)
+                cursor.execute(
+                    f"SELECT * FROM videos WHERE status IN ({placeholders}) ORDER BY created_at ASC LIMIT 1",
+                    target_statuses
+                )
                 row = cursor.fetchone()
                 return dict(row) if row else None
 

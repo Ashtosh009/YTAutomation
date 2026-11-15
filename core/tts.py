@@ -21,16 +21,26 @@ class TextToSpeech:
                 elif chunk["type"] == "WordBoundary":
                     submaker.feed(chunk)
                     
-        # Extract word boundaries: offset is in 100ns units
+        # Extract word boundaries
         word_timings = []
-        for offset, duration, text_word in submaker.offset_and_duration:
-            start_s = offset / 10_000_000.0
-            end_s = (offset + duration) / 10_000_000.0
-            word_timings.append({
-                "word": text_word,
-                "start": start_s,
-                "end": end_s
-            })
+        if hasattr(submaker, "cues") and submaker.cues:
+            for cue in submaker.cues:
+                start_s = cue.start.total_seconds()
+                end_s = cue.end.total_seconds()
+                word_timings.append({
+                    "word": cue.content,
+                    "start": start_s,
+                    "end": end_s
+                })
+        elif hasattr(submaker, "offset_and_duration"):
+            for offset, duration, text_word in submaker.offset_and_duration:
+                start_s = offset / 10_000_000.0
+                end_s = (offset + duration) / 10_000_000.0
+                word_timings.append({
+                    "word": text_word,
+                    "start": start_s,
+                    "end": end_s
+                })
         return word_timings
 
     def synthesize(self, text: str, output_audio_path: str) -> List[Dict[str, Any]]:

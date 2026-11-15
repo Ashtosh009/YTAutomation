@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS videos (
     tags TEXT,
     script_json JSONB,
     video_path TEXT,
+    storage_path TEXT,
+    thumbnail_path TEXT,
     status TEXT DEFAULT 'queued', -- 'queued', 'rendering', 'ready_for_review', 'approved_for_upload', 'scheduled', 'published', 'failed'
     scheduled_publish_at TIMESTAMPTZ,
     youtube_video_id TEXT,
@@ -29,9 +31,37 @@ CREATE TABLE IF NOT EXISTS videos (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Row Level Security (Enable public reads or service_role access)
+-- 3. Migration for existing tables:
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS storage_path TEXT;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_path TEXT;
+
+-- 4. Storage Bucket Setup
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('shorts', 'shorts', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Storage Policies (Public read, authenticated / service-role upload & update)
+DROP POLICY IF EXISTS "Public Read Shorts Bucket" ON storage.objects;
+CREATE POLICY "Public Read Shorts Bucket"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'shorts');
+
+DROP POLICY IF EXISTS "Service Role Upload Shorts Bucket" ON storage.objects;
+CREATE POLICY "Service Role Upload Shorts Bucket"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'shorts');
+
+DROP POLICY IF EXISTS "Service Role Update Shorts Bucket" ON storage.objects;
+CREATE POLICY "Service Role Update Shorts Bucket"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'shorts');
+
+-- 5. Row Level Security
 ALTER TABLE ideas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow public read-write for control panel" ON ideas;
 CREATE POLICY "Allow public read-write for control panel" ON ideas FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public read-write for control panel" ON videos;
 CREATE POLICY "Allow public read-write for control panel" ON videos FOR ALL USING (true) WITH CHECK (true);

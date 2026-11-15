@@ -62,9 +62,18 @@ class YouTubeUploader:
         description: str,
         tags: List[str],
         publish_at: Optional[str] = None,
-        privacy_status: str = "private"
+        privacy_status: str = "private",
+        dry_run: bool = False
     ) -> Dict[str, Any]:
         """Uploads a vertical video to YouTube as a Short."""
+        if dry_run:
+            print(f"[YouTube DRY-RUN] Simulating upload for {video_file_path} ('{title}')")
+            return {
+                "id": "dry_run_simulated_id",
+                "url": "https://youtube.com/shorts/dry_run_simulated_id",
+                "response": {"id": "dry_run_simulated_id"}
+            }
+
         from googleapiclient.http import MediaFileUpload
 
         if not os.path.exists(video_file_path):

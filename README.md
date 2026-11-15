@@ -123,7 +123,8 @@ In your GitHub repository, navigate to **Settings > Secrets and variables > Acti
 
 - `GEMINI_API_KEY`: Your Google AI Studio API key.
 - `YOUTUBE_TOKEN_BASE64`: The base64-encoded `token.json`.
-- `SUPABASE_URL`: (Optional) Your Supabase project URL.
-- `SUPABASE_KEY`: (Optional) Your Supabase anon/service role key.
+- `SUPABASE_URL`: Your Supabase project URL (e.g., `https://xyz.supabase.co`).
+- `SUPABASE_KEY`: **Must be your Supabase `service_role` secret key** (found in Project Settings > API). This allows GitHub Actions runners and the server-side panel to write to the `videos` table and upload/download objects in the `shorts` Storage bucket.
+- `SUPABASE_BUCKET`: (Optional, default `shorts`) The Supabase Storage bucket for videos and thumbnails.
 
 You can trigger a test batch run directly under **Actions > Automated Shorts Pipeline > Run workflow**.

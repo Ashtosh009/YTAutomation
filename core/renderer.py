@@ -162,4 +162,28 @@ class VideoRenderer:
         print(f"[Renderer] Render complete: {output_path}")
         return output_path
 
+    def generate_thumbnail(self, script_data: Dict[str, Any], video_path: str, output_thumbnail_path: str) -> str:
+        """Generates a 9:16 thumbnail image from script scene or extracts frame from video."""
+        target_path = Path(output_thumbnail_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            scenes = script_data.get("scenes", [])
+            peak_scene = scenes[0] if scenes else {}
+            img = renderer_engine.render_frame(peak_scene, progress=0.5)
+            img.save(str(target_path), "JPEG", quality=90)
+            return str(target_path)
+        except Exception as e:
+            print(f"[Renderer] Could not render frame for thumbnail: {e}. Trying FFmpeg extract.")
+
+        # Fallback: extract frame using ffmpeg
+        if os.path.exists(video_path):
+            subprocess.run([
+                self.ffmpeg_bin, "-y", "-ss", "00:00:01",
+                "-i", video_path, "-vframes", "1",
+                "-q:v", "2", str(target_path)
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        return str(target_path)
+
 video_renderer = VideoRenderer()
