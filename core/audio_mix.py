@@ -231,20 +231,61 @@ def sfx_track(duration: float, events: List[Tuple[float, str]]) -> np.ndarray:
     return out
 
 
-def mix(ffmpeg_bin: str, narration_wav: str, music_wav: str, sfx_wav: str, out_wav: str):
-    fc = (
-        "[0:a]aformat=sample_rates=44100:channel_layouts=stereo,asplit=2[n][sc];"
-        "[1:a]aformat=sample_rates=44100:channel_layouts=stereo[m];"
-        "[m][sc]sidechaincompress=threshold=0.02:ratio=8:attack=15:release=350[md];"
-        "[2:a]aformat=sample_rates=44100:channel_layouts=stereo[s];"
-        "[n][md][s]amix=inputs=3:normalize=0:duration=longest,"
-        "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=44100,aformat=channel_layouts=stereo[out]"
-    )
-    res = subprocess.run([ffmpeg_bin, "-y", "-v", "error", "-i", narration_wav, "-i", music_wav, "-i", sfx_wav,
-                          "-filter_complex", fc, "-map", "[out]", "-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le", out_wav],
+def duck_gain(narration: np.ndarray, n: int, depth_db: float = 10.0, attack: float = 0.015, release: float = 0.35) -> np.ndarray:
+    """Music gain that dips under the voice. Envelope on 10 ms blocks, attack/release smoothing."""
+    block = int(0.01 * SR)
+    nb = int(math.ceil(n / block))
+    x = np.zeros(nb * block, np.float32)
+    x[:min(n, len(narration))] = narration[:n]
+    rms = np.sqrt(np.mean(x.reshape(nb, block) ** 2, axis=1) + 1e-12)
+    level_db = 20 * np.log10(rms)
+    target = np.clip((level_db + 42) / 18, 0, 1)  # 0 below -42 dBFS, 1 above -24 dBFS
+    a_up, a_dn = math.exp(-0.01 / attack), math.exp(-0.01 / release)
+    sm = np.empty_like(target)
+    cur = 0.0
+    for i, v in enumerate(target):
+        coef = a_up if v > cur else a_dn
+        cur = coef * cur + (1 - coef) * v
+        sm[i] = cur
+    gain_blocks = 10 ** (-depth_db * sm / 20)
+    return np.interp(np.arange(n), np.arange(nb) * block + block / 2, gain_blocks).astype(np.float32)
+
+
+def mix(ffmpeg_bin: str, narration_wav: str, music_wav: str, sfx_wav: str, out_wav: str, target_lufs: float = -14.0):
+    """Mix in numpy (deterministic), then one static gain to target loudness + true-peak limiter.
+
+    ffmpeg's sidechaincompress/amix/loudnorm graph zeroed the last ~1 s of the music bed
+    (measured -80..-180 dB tails), so ducking and summing are done here instead.
+    """
+    def read(path):
+        with wave.open(path) as w:
+            ch = w.getnchannels()
+            x = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768
+        x = x.reshape(-1, ch)
+        return np.repeat(x, 2, axis=1) if ch == 1 else x
+
+    nar, mus, fx = read(narration_wav), read(music_wav), read(sfx_wav)
+    n = max(len(nar), len(mus), len(fx))
+    pad = lambda a: np.pad(a, ((0, n - len(a)), (0, 0)))
+    nar, mus, fx = pad(nar), pad(mus), pad(fx)
+    g = duck_gain(nar[:, 0], n)[:, None]
+    out = nar + mus * 0.55 * g + fx
+    raw = str(Path(out_wav).with_suffix(".raw.wav"))
+    write_wav(raw, np.clip(out, -1, 1) * 0.5)  # headroom; static gain below restores level
+
+    res = subprocess.run([ffmpeg_bin, "-hide_banner", "-nostats", "-i", raw, "-af", "ebur128", "-f", "null", "-"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    found = re.findall(r"I:\s+(-?[\d.]+) LUFS", res.stderr)
+    if not found:
+        raise RuntimeError("[Audio] could not measure loudness of the raw mix")
+    gain_db = target_lufs - float(found[-1])
+    res = subprocess.run([ffmpeg_bin, "-y", "-v", "error", "-i", raw, "-af",
+                          f"volume={gain_db:.2f}dB,alimiter=limit=0.76:attack=5:release=50:level=disabled",
+                          "-ar", str(SR), "-ac", "2", "-c:a", "pcm_s16le", out_wav],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0:
         raise RuntimeError(f"[Audio] mix failed: {res.stderr.decode()[-600:]}")
+    Path(raw).unlink(missing_ok=True)
 
 
 def measure(ffmpeg_bin: str, wav: str, silence_db: float = -45.0, silence_d: float = 0.4) -> Dict:
