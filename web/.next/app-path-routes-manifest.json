@@ -1,0 +1,17 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/github/runs/route": "/api/github/runs",
+  "/api/auth/logout/route": "/api/auth/logout",
+  "/api/github/trigger/route": "/api/github/trigger",
+  "/api/ideas/[id]/route": "/api/ideas/[id]",
+  "/api/auth/login/route": "/api/auth/login",
+  "/api/ideas/route": "/api/ideas",
+  "/api/videos/route": "/api/videos",
+  "/api/videos/[id]/route": "/api/videos/[id]",
+  "/about/page": "/about",
+  "/ideas/page": "/ideas",
+  "/login/page": "/login",
+  "/page": "/",
+  "/privacy/page": "/privacy",
+  "/queue/page": "/queue"
+}
