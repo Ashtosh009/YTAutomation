@@ -20,7 +20,12 @@ on:
       topic:
         description: 'Custom topic (if generate_single selected)'
         required: false
-        default: 'Trying to assemble IKEA furniture'
+        default: 'The Mary Celeste: a ship found sailing with nobody on board'
+
+# Never let two runs (e.g. a cron publish and a manual one) pick the same approved video.
+concurrency:
+  group: shorts-pipeline
+  cancel-in-progress: false
 
 jobs:
   run-pipeline:
@@ -54,19 +59,22 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SUPABASE_BUCKET: shorts
           YOUTUBE_TOKEN_BASE64: ${{ secrets.YOUTUBE_TOKEN_BASE64 }}
+          # Passed via env, not interpolated into the script, to avoid shell injection.
+          INPUT_ACTION: ${{ inputs.action }}
+          INPUT_TOPIC: ${{ inputs.topic }}
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "Running scheduled publisher for approved videos..."
             python run_pipeline.py --mode publish
-          elif [ "${{ inputs.action }}" = "batch_generate" ]; then
+          elif [ "$INPUT_ACTION" = "batch_generate" ]; then
             echo "Running batch generation for 3 videos..."
             python run_pipeline.py --mode batch
-          elif [ "${{ inputs.action }}" = "publish_next_approved" ]; then
+          elif [ "$INPUT_ACTION" = "publish_next_approved" ]; then
             echo "Publishing next approved video..."
             python run_pipeline.py --mode publish
-          elif [ "${{ inputs.action }}" = "generate_single" ]; then
-            echo "Generating single short for topic: ${{ inputs.topic }}"
-            python run_pipeline.py --mode generate --topic "${{ inputs.topic }}"
+          elif [ "$INPUT_ACTION" = "generate_single" ]; then
+            echo "Generating single short for topic: $INPUT_TOPIC"
+            python run_pipeline.py --mode generate --topic "$INPUT_TOPIC"
           fi
 
       - name: Upload Video Artifacts for Morning Review
@@ -76,3 +84,4 @@ jobs:
           name: generated-shorts
           path: output/*.mp4
           retention-days: 7
+          if-no-files-found: ignore
