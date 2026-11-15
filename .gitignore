@@ -34,3 +34,5 @@ web/.next/
 web/out/
 web/build/
 web/node_modules/
+*.tsbuildinfo
+!.env.example
