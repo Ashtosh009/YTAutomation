@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Secrets & Environment
+.env
+client_secret*.json
+token*.json
+
+# Data & Outputs
+data/*.db
+output/*.mp4
+output/temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / Web
+node_modules/
+.vercel

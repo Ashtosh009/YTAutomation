@@ -1,0 +1,18 @@
+# Core Dependencies
+google-genai>=0.1.1
+edge-tts>=6.1.12
+pillow>=10.2.0
+imageio-ffmpeg>=0.5.1
+numpy>=1.24.0
+supabase>=2.3.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# YouTube API
+google-api-python-client>=2.115.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+
+# Optional audio & video tools
+moviepy>=1.0.3
+requests>=2.31.0
