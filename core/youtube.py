@@ -2,7 +2,7 @@ import os
 import json
 import base64
 from typing import Dict, Any, List, Optional
-from core.config import YOUTUBE_CLIENT_SECRETS_FILE, YOUTUBE_TOKEN_FILE, YOUTUBE_TOKEN_BASE64
+from core.config import YOUTUBE_CLIENT_SECRETS_FILE, YOUTUBE_TOKEN_FILE, YOUTUBE_TOKEN_BASE64, YOUTUBE_DEFAULT_PRIVACY
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
@@ -39,9 +39,22 @@ class YouTubeUploader:
         # Refresh or prompt login if local
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except Exception as e:
+                    raise RuntimeError(
+                        f"[YouTube] Token refresh failed ({type(e).__name__}). If the OAuth app is in "
+                        "Testing mode the refresh token expires after 7 days: re-run the local sign-in "
+                        "and update the YOUTUBE_TOKEN_BASE64 secret."
+                    ) from e
                 with open(self.token_file, "w") as token:
                     token.write(creds.to_json())
+            elif os.getenv("CI"):
+                # No browser on a CI runner: run_local_server would hang until the job timeout.
+                raise RuntimeError(
+                    "[YouTube] No valid credentials in CI. Set the YOUTUBE_TOKEN_BASE64 secret "
+                    "(base64 of a token.json that has a refresh_token)."
+                )
             else:
                 if not os.path.exists(self.client_secrets_file):
                     raise FileNotFoundError(
@@ -62,12 +75,21 @@ class YouTubeUploader:
         description: str,
         tags: List[str],
         publish_at: Optional[str] = None,
-        privacy_status: str = "private",
+        privacy_status: Optional[str] = None,
         dry_run: bool = False
     ) -> Dict[str, Any]:
         """Uploads a vertical video to YouTube as a Short."""
+        # Unscheduled uploads previously defaulted to "private", so videos the
+        # cron "published" never became visible. Default now comes from env.
+        privacy_status = privacy_status or YOUTUBE_DEFAULT_PRIVACY
         if dry_run:
-            print(f"[YouTube DRY-RUN] Simulating upload for {video_file_path} ('{title}')")
+            if not os.path.exists(video_file_path):
+                raise FileNotFoundError(f"Video file not found at {video_file_path}")
+            print(
+                f"[YouTube DRY-RUN] Would upload {video_file_path} ({os.path.getsize(video_file_path)} bytes): "
+                f"title={title!r}, tags={tags}, publishAt={publish_at}, "
+                f"privacy={'private (scheduled)' if publish_at else privacy_status}"
+            )
             return {
                 "id": "dry_run_simulated_id",
                 "url": "https://youtube.com/shorts/dry_run_simulated_id",
@@ -94,7 +116,7 @@ class YouTubeUploader:
         body = {
             "snippet": {
                 "title": title[:100],
-                "description": description + "\n\n#Shorts",
+                "description": description if "#shorts" in description.lower() else description + "\n\n#Shorts",
                 "tags": tags,
                 "categoryId": "23" # Comedy category
             },

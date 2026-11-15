@@ -11,6 +11,11 @@ from core.llm import generate_script_with_gemini
 from core.renderer import video_renderer
 from core.youtube import youtube_uploader
 
+# Status values shared with the web panel (web/app/page.tsx, web/app/queue/page.tsx).
+# The panel writes and filters on "approved"; db.get_next_job also accepts the
+# legacy "approved_for_upload" for rows written by older pipeline versions.
+STATUS_APPROVED = "approved"
+
 def cmd_generate(topic: str, auto_approve: bool = False, dry_run: bool = False):
     """Generates an animated short from idea/topic end-to-end and uploads to Supabase Storage."""
     print(f"\n=======================================================")
@@ -71,7 +76,7 @@ def cmd_generate(topic: str, auto_approve: bool = False, dry_run: bool = False):
 
         # Step 5: Persist storage paths & status on the videos row.
         # update_video_status raises DatabaseUpdateError if the row is not updated.
-        new_status = "approved_for_upload" if auto_approve else "ready_for_review"
+        new_status = STATUS_APPROVED if auto_approve else "ready_for_review"
         db.update_video_status(
             video_id=video_id,
             status=new_status,
@@ -120,32 +125,50 @@ def cmd_list_review_queue():
     print("\nTo approve this video for scheduled upload, run:")
     print(f"python3 run_pipeline.py approve --approve {job['id']}\n")
 
+def _parse_publish_at(value) -> "datetime.datetime | None":
+    """Parses an ISO timestamp (DB or CLI) into an aware UTC datetime."""
+    if not value:
+        return None
+    dt = datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.astimezone(datetime.timezone.utc)
+
 def cmd_approve(video_id: int, publish_at: str = None):
-    """Approves a video for upload."""
-    db.update_video_status(video_id=video_id, status="approved_for_upload")
-    print(f"✅ Video #{video_id} approved for upload!")
+    """Approves a video for upload, optionally with a scheduled publish time."""
+    when = _parse_publish_at(publish_at)
+    db.update_video_status(
+        video_id=video_id,
+        status=STATUS_APPROVED,
+        scheduled_publish_at=when.isoformat() if when else None,
+    )
+    print(f"✅ Video #{video_id} approved for upload" + (f" (publish at {when.isoformat()})" if when else "") + "!")
 
 def cmd_publish(dry_run: bool = False):
     """
     Uploads the next approved video to YouTube.
     If local file is missing, downloads from Supabase Storage first.
     """
-    job = db.get_next_job(status="approved_for_upload")
+    job = db.get_next_job(status=STATUS_APPROVED)
     if not job:
         print("[Upload] No approved videos ready for publishing.")
         return None
 
     video_id = job["id"]
     title = job["title"]
-    desc = job.get("description", "")
-    tags = job.get("tags", "").split(",") if job.get("tags") else []
-    publish_at = job.get("scheduled_publish_at")
+    desc = job.get("description") or ""
+    tags = [t.strip() for t in (job.get("tags") or "").split(",") if t.strip()]
 
-    print(f"\n[Upload] Preparing Video #{video_id}: '{title}'...")
+    # YouTube rejects a publishAt in the past; treat it as "publish now".
+    when = _parse_publish_at(job.get("scheduled_publish_at"))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    publish_at = when.strftime("%Y-%m-%dT%H:%M:%SZ") if when and when > now else None
+
+    print(f"\n[Upload] Preparing Video #{video_id}: '{title}' (publishAt={publish_at or 'now'})...")
 
     video_path = job.get("video_path")
 
-    # If local file is missing, download from Supabase Storage
+    # If local file is missing (always the case on a fresh CI runner), download from Supabase Storage
     if not video_path or not os.path.exists(video_path):
         remote_path = job.get("storage_path")
         if not remote_path or remote_path.startswith("/") or not remote_path.startswith("videos/"):
@@ -159,9 +182,10 @@ def cmd_publish(dry_run: bool = False):
             print(f"[Upload] Successfully downloaded to {video_path}")
         except Exception as e:
             err = f"Failed to download video #{video_id} from storage: {e}"
-            print(f"[Upload] Error: {err}")
-            db.update_video_status(video_id, status="failed", error_log=err)
-            raise e
+            print(f"[Upload] Error: {err}", file=sys.stderr)
+            if not dry_run:
+                db.update_video_status(video_id, status="failed", error_log=err)
+            raise
 
     print(f"[Upload] Publishing Video #{video_id} to YouTube (dry_run={dry_run})...")
 
@@ -174,17 +198,21 @@ def cmd_publish(dry_run: bool = False):
             publish_at=publish_at,
             dry_run=dry_run
         )
-        db.update_video_status(
-            video_id=video_id,
-            status="published",
-            youtube_id=res["id"]
-        )
-        print(f"🎉 Successfully published to YouTube! Video ID: {res['id']}, URL: {res['url']}\n")
-        return res
     except Exception as e:
-        print(f"❌ YouTube upload failed: {e}")
-        db.update_video_status(video_id=video_id, status="failed", error_log=str(e))
-        raise e
+        print(f"❌ YouTube upload failed: {e}", file=sys.stderr)
+        if not dry_run:
+            db.update_video_status(video_id=video_id, status="failed", error_log=str(e))
+        raise
+
+    if dry_run:
+        # Leave the row untouched so a dry run never consumes the approved queue.
+        print(f"[Upload DRY-RUN] Would mark video #{video_id} as {'scheduled' if publish_at else 'published'}; DB unchanged.\n")
+        return res
+
+    new_status = "scheduled" if publish_at else "published"
+    db.update_video_status(video_id=video_id, status=new_status, youtube_id=res["id"])
+    print(f"🎉 Uploaded to YouTube ({new_status})! Video ID: {res['id']}, URL: {res['url']}\n")
+    return res
 
 # Alias for compatibility with prompt's naming
 cmd_publish_next = cmd_publish

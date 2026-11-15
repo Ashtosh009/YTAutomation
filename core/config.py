@@ -29,6 +29,8 @@ DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "en-US-ChristopherNeural")
 YOUTUBE_CLIENT_SECRETS_FILE = os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", str(BASE_DIR / "client_secret.json"))
 YOUTUBE_TOKEN_FILE = os.getenv("YOUTUBE_TOKEN_FILE", str(BASE_DIR / "token.json"))
 YOUTUBE_TOKEN_BASE64 = os.getenv("YOUTUBE_TOKEN_BASE64", "")
+# Privacy for uploads with no scheduled publish time: public | unlisted | private.
+YOUTUBE_DEFAULT_PRIVACY = os.getenv("YOUTUBE_DEFAULT_PRIVACY", "public")
 
 # Output & Assets directory
 OUTPUT_DIR = BASE_DIR / "output"
