@@ -69,7 +69,8 @@ def cmd_generate(topic: str, auto_approve: bool = False, dry_run: bool = False):
         print(f"      Storage video path: {storage_video_key}")
         print(f"      Storage thumb path: {storage_thumb_key}")
 
-        # Step 5: Update Video Status & Paths
+        # Step 5: Persist storage paths & status on the videos row.
+        # update_video_status raises DatabaseUpdateError if the row is not updated.
         new_status = "approved_for_upload" if auto_approve else "ready_for_review"
         db.update_video_status(
             video_id=video_id,
@@ -78,6 +79,7 @@ def cmd_generate(topic: str, auto_approve: bool = False, dry_run: bool = False):
             storage_path=storage_video_key,
             thumbnail_path=storage_thumb_key
         )
+        print(f"      DB row #{video_id} updated: storage_path={storage_video_key}, thumbnail_path={storage_thumb_key}")
 
         print(f"\n✅ Video #{video_id} successfully processed!")
         print(f"   Status: '{new_status}'")
@@ -91,9 +93,12 @@ def cmd_generate(topic: str, auto_approve: bool = False, dry_run: bool = False):
         return video_id, output_filepath, storage_video_key
 
     except Exception as e:
-        print(f"❌ Error during generation/upload: {e}")
-        db.update_video_status(video_id=video_id, status="failed", error_log=str(e))
-        raise e
+        print(f"❌ Error during generation/upload: {e}", file=sys.stderr)
+        try:
+            db.update_video_status(video_id=video_id, status="failed", error_log=str(e))
+        except Exception as mark_err:
+            print(f"❌ Also failed to mark video #{video_id} as failed: {mark_err}", file=sys.stderr)
+        raise
 
 def cmd_list_review_queue():
     """Lists videos awaiting review."""

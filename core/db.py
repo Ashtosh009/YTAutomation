@@ -4,6 +4,10 @@ import datetime
 from typing import Optional, Dict, Any, List
 from core.config import SUPABASE_URL, SUPABASE_KEY, SQLITE_DB_PATH
 
+
+class DatabaseUpdateError(RuntimeError):
+    """Raised when a videos row update fails or does not persist."""
+
 class Database:
     def __init__(self):
         self.use_supabase = bool(SUPABASE_URL and SUPABASE_KEY)
@@ -123,22 +127,32 @@ class Database:
                 data["error_log"] = error_log
 
             try:
-                self.supabase.table("videos").update(data).eq("id", video_id).execute()
+                res = self.supabase.table("videos").update(data).eq("id", video_id).execute()
             except Exception as e:
                 err_str = str(e)
-                if "PGRST204" in err_str and ("storage_path" in err_str or "thumbnail_path" in err_str):
-                    print(
-                        "\n⚠️ [DB] Supabase schema warning: 'storage_path' or 'thumbnail_path' column is missing from 'videos' table.\n"
-                        "Please run this in your Supabase SQL Editor:\n"
-                        "  ALTER TABLE videos ADD COLUMN IF NOT EXISTS storage_path TEXT;\n"
-                        "  ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_path TEXT;\n"
+                hint = ""
+                if "PGRST204" in err_str:
+                    hint = (
+                        "\nA column is missing from the Supabase 'videos' table. "
+                        "Run the migration section of supabase_schema.sql in the Supabase SQL Editor."
                     )
-                    # Retry without the missing storage columns so status is still saved
-                    data.pop("storage_path", None)
-                    data.pop("thumbnail_path", None)
-                    self.supabase.table("videos").update(data).eq("id", video_id).execute()
-                else:
-                    raise e
+                raise DatabaseUpdateError(
+                    f"[DB] Failed to update videos row #{video_id} with {sorted(data)}: {err_str}{hint}"
+                ) from e
+
+            # Supabase returns the updated rows; zero rows means the id did not
+            # match or RLS blocked the write, which is otherwise a silent no-op.
+            rows = res.data or []
+            if len(rows) != 1:
+                raise DatabaseUpdateError(
+                    f"[DB] Update of videos row #{video_id} affected {len(rows)} rows (expected 1). "
+                    "Check that the row exists and that SUPABASE_KEY is the service-role key."
+                )
+            mismatched = [k for k in data if k != "updated_at" and rows[0].get(k) != data[k]]
+            if mismatched:
+                raise DatabaseUpdateError(
+                    f"[DB] videos row #{video_id} did not persist fields {mismatched} after update."
+                )
         else:
             with sqlite3.connect(SQLITE_DB_PATH) as conn:
                 cursor = conn.cursor()
@@ -160,7 +174,14 @@ class Database:
                     updates.append("error_log = ?")
                     params.append(error_log)
                 params.append(video_id)
-                cursor.execute(f"UPDATE videos SET {', '.join(updates)} WHERE id = ?", params)
+                try:
+                    cursor.execute(f"UPDATE videos SET {', '.join(updates)} WHERE id = ?", params)
+                except sqlite3.Error as e:
+                    raise DatabaseUpdateError(f"[DB] Failed to update videos row #{video_id}: {e}") from e
+                if cursor.rowcount != 1:
+                    raise DatabaseUpdateError(
+                        f"[DB] Update of videos row #{video_id} affected {cursor.rowcount} rows (expected 1)."
+                    )
                 conn.commit()
 
     def get_next_job(self, status: str = "queued") -> Optional[Dict[str, Any]]:

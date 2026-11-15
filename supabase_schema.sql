@@ -31,9 +31,16 @@ CREATE TABLE IF NOT EXISTS videos (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Migration for existing tables:
+-- 3. Migration for existing tables (safe to re-run):
+-- Every column the pipeline (core/db.py) writes and the panel (web/) reads.
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS video_path TEXT;
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS storage_path TEXT;
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_path TEXT;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS youtube_video_id TEXT;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS error_log TEXT;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS scheduled_publish_at TIMESTAMPTZ;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+NOTIFY pgrst, 'reload schema';
 
 -- 4. Storage Bucket Setup
 INSERT INTO storage.buckets (id, name, public)
