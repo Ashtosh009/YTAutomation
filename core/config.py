@@ -8,6 +8,8 @@ load_dotenv(BASE_DIR / ".env")
 
 # LLM
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+# gemini-flash-latest stopped responding (>120s timeouts, 2026-11-15); gemini-3.5-flash answers in ~13s.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 # Database / Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
