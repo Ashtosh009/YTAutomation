@@ -109,6 +109,7 @@ class VideoRenderer:
             "-c:a", "aac",
             "-b:a", "192k",
             "-shortest",
+            "-movflags", "+faststart",  # moov atom first so the panel can stream before full download
             output_path
         ]
 
