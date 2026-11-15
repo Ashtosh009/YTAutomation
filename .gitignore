@@ -8,6 +8,10 @@ ENV/
 
 # Secrets & Environment
 .env
+.env*.local
+*.env
+web/.env
+web/.env*.local
 client_secret*.json
 token*.json
 
@@ -20,6 +24,13 @@ output/temp/
 .DS_Store
 Thumbs.db
 
-# Node / Web
+# Node / Web / Next.js
 node_modules/
 .vercel
+.next/
+out/
+build/
+web/.next/
+web/out/
+web/build/
+web/node_modules/
