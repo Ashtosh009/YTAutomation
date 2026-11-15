@@ -50,8 +50,8 @@ export async function PATCH(
       } else if (status === "approved") {
         updates.status = "approved";
         if (scheduled_at) {
-          // Pipeline reads scheduled_publish_at; there is no scheduled_at column.
           updates.scheduled_publish_at = scheduled_at;
+          updates.scheduled_at = scheduled_at;
         }
       } else {
         updates.status = status;
