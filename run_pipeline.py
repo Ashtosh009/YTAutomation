@@ -4,12 +4,20 @@ import os
 import argparse
 import datetime
 from pathlib import Path
-from core.config import OUTPUT_DIR
+from core.config import OUTPUT_DIR, RENDER_MODE
 from core.db import db
 from core.storage import storage
 from core.llm import generate_script_with_gemini
-from core.renderer import video_renderer
 from core.youtube import youtube_uploader
+
+
+def _get_renderer():
+    """RENDER_MODE=explainer (default): 2.5D cinematic explainer; kit: original stick-figure renderer."""
+    if RENDER_MODE == "explainer":
+        from core.explainer import explainer_renderer
+        return explainer_renderer
+    from core.renderer import video_renderer
+    return video_renderer
 
 # Status values shared with the web panel (web/app/page.tsx, web/app/queue/page.tsx).
 # The panel writes and filters on "approved"; db.get_next_job also accepts the
@@ -23,8 +31,14 @@ def cmd_generate(topic: str, auto_approve: bool = False, dry_run: bool = False):
     print(f"=======================================================\n")
 
     # Step 1: Script & Metadata
-    print("[1/4] Writing script & scene storyboard with Gemini...")
-    script_data = generate_script_with_gemini(topic)
+    print(f"[1/4] Writing script & scene storyboard with Gemini (RENDER_MODE={RENDER_MODE})...")
+    renderer = _get_renderer()
+    if RENDER_MODE == "explainer":
+        from core.cast import get_cast
+        from core.llm import generate_explainer_script
+        script_data = generate_explainer_script(topic, get_cast().names())
+    else:
+        script_data = generate_script_with_gemini(topic)
     title = script_data.get("title", f"The Truth About {topic}")
     desc = script_data.get("description", "")
     tags = script_data.get("tags", ["shorts", "animation", "comedy"])
@@ -32,7 +46,7 @@ def cmd_generate(topic: str, auto_approve: bool = False, dry_run: bool = False):
     print(f"      Scenes: {len(script_data.get('scenes', []))}")
 
     # Step 2: Database Record (Initial)
-    idea_id = db.add_idea(topic=topic, niche="storytime", status="processed")
+    idea_id = db.add_idea(topic=topic, niche="mystery" if RENDER_MODE == "explainer" else "storytime", status="processed")
     video_id = db.create_video_record(
         idea_id=idea_id,
         title=title,
@@ -47,13 +61,13 @@ def cmd_generate(topic: str, auto_approve: bool = False, dry_run: bool = False):
     output_filepath = str(OUTPUT_DIR / output_filename)
     output_thumbpath = str(OUTPUT_DIR / f"short_{video_id}_{timestamp}_thumb.jpg")
 
-    print("\n[2/4] Rendering stick figure animation...")
+    print(f"\n[2/4] Rendering ({RENDER_MODE} mode)...")
     try:
-        video_renderer.render_short(script_data, output_filepath)
+        renderer.render_short(script_data, output_filepath)
         print(f"      Video rendered: {output_filepath}")
 
         print("\n[3/4] Generating video thumbnail...")
-        video_renderer.generate_thumbnail(script_data, output_filepath, output_thumbpath)
+        renderer.generate_thumbnail(script_data, output_filepath, output_thumbpath)
         print(f"      Thumbnail rendered: {output_thumbpath}")
 
         # Step 4: Upload to Supabase Storage

@@ -16,3 +16,7 @@ google-auth-httplib2>=0.2.0
 # Optional audio & video tools
 moviepy>=1.0.3
 requests>=2.31.0
+
+# Explainer render mode (2.5D camera, depth model on CPU)
+opencv-python-headless>=4.8,<5
+onnxruntime>=1.17

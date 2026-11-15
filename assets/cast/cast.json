@@ -1,0 +1,55 @@
+{
+  "_doc": "Recurring cast for the explainer mode. Optional sprite PNGs: assets/cast/<slug>/<pose>.png (transparent, feet at bottom center). Missing sprites are drawn in code as bean-head figures in these costume colors.",
+  "poses": ["idle", "talking", "shocked", "angry", "thinking", "pointing", "smug", "scared"],
+  "characters": [
+    {
+      "name": "Mystery Stickman",
+      "slug": "mystery_stickman",
+      "role": "main character and narrator, a curious detective",
+      "voice_role": "narrator",
+      "coat": "#C98B3C",
+      "coat_dark": "#8C5A22",
+      "hat": "fedora",
+      "hat_color": "#3F2E22",
+      "hat_band": "#151515",
+      "accessory": "pixel_sunglasses",
+      "accessory_poses": ["smug"]
+    },
+    {
+      "name": "Doubtful Dan",
+      "slug": "doubtful_dan",
+      "role": "skeptical sidekick who questions every theory",
+      "voice_role": "skeptic",
+      "coat": "#2F9C78",
+      "coat_dark": "#1D6B52",
+      "hat": "beanie",
+      "hat_color": "#D9473B",
+      "accessory": "scarf",
+      "accessory_color": "#F2C14E"
+    },
+    {
+      "name": "Chief Inspector",
+      "slug": "chief_inspector",
+      "role": "authority figure and rival with the official explanation",
+      "voice_role": "authority",
+      "coat": "#22335C",
+      "coat_dark": "#141F3A",
+      "hat": "peaked_cap",
+      "hat_color": "#F2F2F2",
+      "hat_band": "#141414",
+      "accessory": "badge",
+      "accessory_color": "#F2C14E"
+    },
+    {
+      "name": "Professor Knot",
+      "slug": "professor_knot",
+      "role": "expert who explains the science",
+      "voice_role": "expert",
+      "coat": "#8E7BB5",
+      "coat_dark": "#5E4E85",
+      "hat": "none",
+      "hair_color": "#EDEDED",
+      "accessory": "round_glasses"
+    }
+  ]
+}

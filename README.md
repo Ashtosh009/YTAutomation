@@ -74,6 +74,32 @@ The output video will be generated at `output/short_<id>_<timestamp>.mp4`!
 
 ---
 
+## 🎥 Render modes
+
+`RENDER_MODE=explainer` (default) produces a **cinematic 2.5D explainer**; `RENDER_MODE=kit` keeps the original
+stick-figure renderer. In GitHub Actions, set a repository variable `RENDER_MODE` to switch.
+
+**Explainer pipeline** (`core/explainer.py`):
+
+| Step | Module | Notes |
+|---|---|---|
+| Script | `core/llm.py` `generate_explainer_script` | 3 Gemini passes: documented facts → script from facts → validator (one auto-fix round). Unresolved flags fail the quality gate. |
+| Stills | `core/images.py` | Providers in order `IMAGE_PROVIDERS=kit,gemini_image,pollinations,procedural`. Gemini image is used only if the probe call succeeds (free keys get `429`). Pollinations is free and key-less but rate-limited; images are cached in `assets/cache/images/`. `MAX_IMAGES_PER_VIDEO` (14) and `IMAGE_TIME_BUDGET_S` (300) cap the work. |
+| Depth + camera | `core/depth.py`, `core/camera25d.py` | Depth Anything V2 Small (ONNX, CPU, ~1 s/image) → per-pixel parallax: dolly, pan, crane, orbit, fly-through, whip, punch. |
+| Cast | `core/cast.py`, `assets/cast/cast.json` | Mystery Stickman, Doubtful Dan, Chief Inspector, Professor Knot. Drop transparent PNGs in `assets/cast/<slug>/<pose>.png` to replace the code-drawn sprites. |
+| Evidence | `core/props_text.py` | Newspaper, logbook, map, calendar, telegram, sticky note, photo frame — real text, ≥ 60 px. |
+| Captions | `core/captions_word.py` | `CAPTION_STYLE=single_word` (default) or `highlight_phrase`. |
+| Audio | `core/audio_mix.py` | One TTS take, pauses > 0.3 s shortened, synthesized music bed + SFX, ducking, −14 LUFS, stereo 44.1 kHz. |
+| Quality gate | `core/quality_check.py` | `QUALITY_GATE=enforce` (default) or `warn`. Writes `quality_report.json`, `contact_sheet.png`, `preview.gif` under `output/explainer/<run>/`. |
+
+Render locally without touching the database or Storage:
+
+```bash
+python scripts/render_explainer.py --topic "The Wow! Signal"
+```
+
+---
+
 ## 📋 Morning Review Queue Workflow
 
 1. **Automatic Batch Generation**:

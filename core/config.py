@@ -37,5 +37,35 @@ OUTPUT_DIR = BASE_DIR / "output"
 ASSETS_DIR = BASE_DIR / "assets"
 DATA_DIR = BASE_DIR / "data"
 
-for directory in [OUTPUT_DIR, ASSETS_DIR, DATA_DIR]:
+CACHE_DIR = ASSETS_DIR / "cache"
+FONTS_DIR = ASSETS_DIR / "fonts"
+KIT_DIR = ASSETS_DIR / "kit"
+CAST_DIR = ASSETS_DIR / "cast"
+
+for directory in [OUTPUT_DIR, ASSETS_DIR, DATA_DIR, CACHE_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Render mode
+#   explainer: 2.5D "cinematic explainer" (painted stills + depth parallax camera,
+#              recurring cast, evidence inserts, single-word captions)
+#   kit:       the original stick-figure renderer (core/stick_engine.py)
+# ---------------------------------------------------------------------------
+RENDER_MODE = os.getenv("RENDER_MODE", "explainer").strip().lower()
+CAPTION_STYLE = os.getenv("CAPTION_STYLE", "single_word").strip().lower()  # single_word | highlight_phrase
+
+# Image providers, tried in order. gemini_image is only used if a probe call succeeds.
+IMAGE_PROVIDERS = [p.strip() for p in os.getenv("IMAGE_PROVIDERS", "kit,gemini_image,pollinations,procedural").split(",") if p.strip()]
+GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+MAX_IMAGES_PER_VIDEO = int(os.getenv("MAX_IMAGES_PER_VIDEO", "14"))
+# Wall-clock budget for remote image generation per video (keeps CI under ~12 min/video).
+IMAGE_TIME_BUDGET_S = float(os.getenv("IMAGE_TIME_BUDGET_S", "300"))
+
+# Depth model (Depth Anything V2 Small, quantized ONNX, ~27 MB, CPU)
+DEPTH_MODEL_URL = os.getenv(
+    "DEPTH_MODEL_URL",
+    "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model_quantized.onnx",
+)
+
+# Quality gate: enforce (fail the run) | warn (report only)
+QUALITY_GATE = os.getenv("QUALITY_GATE", "enforce").strip().lower()

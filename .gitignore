@@ -36,3 +36,6 @@ web/build/
 web/node_modules/
 *.tsbuildinfo
 !.env.example
+
+# Explainer caches (depth model, generated images, depth maps)
+assets/cache/
