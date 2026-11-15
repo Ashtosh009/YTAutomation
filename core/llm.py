@@ -55,7 +55,7 @@ def generate_script_with_gemini(topic: str) -> Dict[str, Any]:
         print("[LLM] GEMINI_API_KEY not found. Using high-quality default template.")
         return get_fallback_script(topic)
 
-    prompt = SCRIPT_SCHEMA_PROMPT.format(topic=topic)
+    prompt = SCRIPT_SCHEMA_PROMPT.replace("{topic}", topic)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
